@@ -119,8 +119,10 @@
     width:100%; margin-top:8px; padding:26px 24px 28px; border-radius:20px;
     background:linear-gradient(135deg,rgba(28,46,74,.62),rgba(16,28,46,.5));
     border:1px solid var(--gold-border); backdrop-filter:blur(8px);
-    box-shadow:0 16px 50px rgba(0,0,0,.4); animation:fadeSlideUp .5s ease both;
+    box-shadow:0 16px 50px rgba(0,0,0,.4); animation:fadeSlideUp .45s ease both;
   }
+  .qfade{animation:qfade .26s ease both}
+  @keyframes qfade{from{opacity:0; transform:translateY(8px)} to{opacity:1; transform:translateY(0)}}
   .top-row{display:flex; align-items:center; justify-content:space-between; gap:12px; margin-bottom:18px}
   .back-btn{display:inline-flex; align-items:center; gap:6px; background:none; border:none; color:rgba(251,249,228,.6); font-family:inherit; font-size:.84rem; font-weight:600; cursor:pointer; padding:6px 4px; transition:color .2s}
   .back-btn:hover{color:var(--gold)}
@@ -393,7 +395,14 @@ function renderHub(){
   `;
 }
 
+/* monta o "esqueleto" do painel uma vez; o conteúdo da pergunta vive em #qbody */
 function renderQuiz(){
+  app.innerHTML = `<div class="panel"><div id="qbody"></div></div>`;
+  renderStep(false);
+}
+
+/* renderiza só a pergunta atual dentro de #qbody (animate=true faz fade suave) */
+function renderStep(animate){
   const q = QUIZZES[state.quiz];
   const total = q.questions.length;
   const item = q.questions[state.step];
@@ -402,12 +411,12 @@ function renderQuiz(){
 
   let input = '';
   if(item.type === 'choice'){
-    input = `<div class="opts">` + item.opts.map((o,i)=>
+    input = `<div class="opts">` + item.opts.map(o=>
       `<button class="opt ${val===o?'sel':''}" onclick="pick('${item.id}',this.dataset.v)" data-v="${o.replace(/"/g,'&quot;')}">
         <span class="dot"></span><span>${o}</span></button>`).join('') + `</div>`;
   } else if(item.type === 'scale'){
     input = `<div class="scale">` + [1,2,3,4,5].map(n=>
-      `<button class="${String(val)===String(n)?'sel':''}" onclick="pick('${item.id}','${n}')">${n}</button>`).join('') + `</div>
+      `<button class="${String(val)===String(n)?'sel':''}" onclick="pick('${item.id}','${n}')" data-v="${n}">${n}</button>`).join('') + `</div>
       <div class="scale-labels"><span>Pouco</span><span>Muito</span></div>`;
   } else {
     input = `<textarea class="field" id="txt" placeholder="${item.placeholder||''}" oninput="state.answers['${item.id}']=this.value">${val||''}</textarea>`;
@@ -416,35 +425,42 @@ function renderQuiz(){
   const canNext = item.type==='text' ? true : (val!==undefined && val!=='');
   const isLast = state.step === total-1;
 
-  app.innerHTML = `
-    <div class="panel">
-      <div class="top-row">
-        <button class="back-btn" onclick="prev()"><svg viewBox="0 0 24 24">${I.back}</svg>${state.step===0?'Voltar':'Anterior'}</button>
-        <span class="q-counter">${state.step+1} / ${total}</span>
-      </div>
-      <div class="progress"><i style="width:${pct}%"></i></div>
-      <div class="q-title">${item.q}</div>
-      ${item.help?`<div class="q-help">${item.help}</div>`:''}
-      ${input}
-      <div class="nav-row">
-        <button class="btn btn-gold" id="nextBtn" ${canNext?'':'disabled'} onclick="next()">
-          ${isLast?'Ver resultado':'Continuar'} <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">${I.arrow}</svg>
-        </button>
-      </div>
+  const body = document.getElementById('qbody');
+  body.innerHTML = `
+    <div class="top-row">
+      <button class="back-btn" onclick="prev()"><svg viewBox="0 0 24 24">${I.back}</svg>${state.step===0?'Voltar':'Anterior'}</button>
+      <span class="q-counter">${state.step+1} / ${total}</span>
+    </div>
+    <div class="progress"><i style="width:${pct}%"></i></div>
+    <div class="q-title">${item.q}</div>
+    ${item.help?`<div class="q-help">${item.help}</div>`:''}
+    ${input}
+    <div class="nav-row">
+      <button class="btn btn-gold" id="nextBtn" ${canNext?'':'disabled'} onclick="next()">
+        ${isLast?'Ver resultado':'Continuar'} <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">${I.arrow}</svg>
+      </button>
     </div>`;
+  if(animate){ body.classList.remove('qfade'); void body.offsetWidth; body.classList.add('qfade'); }
 }
 
+/* seleção SEM redesenhar tudo (sem flash) */
 function pick(id,v){
   state.answers[id]=v;
-  renderQuiz();
+  const body = document.getElementById('qbody');
+  if(!body) return;
+  const type = QUIZZES[state.quiz].questions[state.step].type;
+  const sel = type==='scale' ? '.scale button' : '.opt';
+  body.querySelectorAll(sel).forEach(b=>b.classList.toggle('sel', b.dataset.v===v));
+  const nb = document.getElementById('nextBtn');
+  if(nb) nb.disabled = false;
 }
 function prev(){
   if(state.step===0){ go('#/'); }
-  else { state.step--; renderQuiz(); }
+  else { state.step--; renderStep(true); }
 }
 function next(){
   const q = QUIZZES[state.quiz];
-  if(state.step < q.questions.length-1){ state.step++; renderQuiz(); }
+  if(state.step < q.questions.length-1){ state.step++; renderStep(true); }
   else { submit(); }
 }
 
